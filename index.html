@@ -13,6 +13,12 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
 <link rel="icon" type="image/png" href="icon_192.png?v=1">
 <script>
+// 안드로이드만: 매니페스트 + 서비스워커 → 크롬 '앱 설치'로 주소창 없이 열림. 안드로이드는 앱과 브라우저가 저장소를 같이 써서 키가 남는다.
+// 아이폰엔 붙이지 않는다(홈 화면 시작 주소가 키 없는 주소로 잡히고 저장소도 따로라 키를 잃음, 4레인 10/30 경험)
+if (/Android/i.test(navigator.userAgent)) {
+  document.write('<link rel="manifest" href="manifest.webmanifest?v=1">');
+  if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
 // 개인 키: ?p=키로 한 번 열면 이 기기에 기억(홈 화면 앱은 사파리와 저장소가 따로라 주소의 키가 기준)
 var PAB_API = 'https://script.google.com/macros/s/AKfycbyhirOC4zYeRmtM8PQ7n2F3AXydpDoxDNWoz-R0GA_3V5t5TrRI1SJgbqnCerhua-iDsg/exec';
 var PAB_KEY = (location.search.match(/[?&]p=([^&]+)/) || [])[1] || '';

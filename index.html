@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PAB 관리자</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PAB 관리자">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#0A0E13">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=1">
+<link rel="icon" type="image/png" href="icon_192.png?v=1">
+<script>
+// 개인 키: ?p=키로 한 번 열면 이 기기에 기억(홈 화면 앱은 사파리와 저장소가 따로라 주소의 키가 기준)
+var PAB_API = '';
+var PAB_KEY = (location.search.match(/[?&]p=([^&]+)/) || [])[1] || '';
+try { if (PAB_KEY) localStorage.setItem('pab-key', PAB_KEY); else PAB_KEY = localStorage.getItem('pab-key') || ''; } catch (e) {}
+if (!PAB_KEY || !PAB_API) document.addEventListener('DOMContentLoaded', function () {
+  document.body.innerHTML = '<div style="padding:80px 24px;text-align:center;font-family:Arial,sans-serif;color:#8696A4;background:#0A0E13;min-height:100vh;line-height:1.7">'
+    + (PAB_API ? '개인 링크(?p=키)로 열어주세요.<br>홈 화면 아이콘은 그 링크를 사파리에서 연 화면에서 추가해야 해요.' : '아직 연결 전이에요.') + '</div>';
+});
+// google.script.run 흉내: 같은 함수 이름을 doPost로 보낸다(문자열 본문 = 사전 확인 요청 없음)
+(function () {
+  function runner(ok, fail) {
+    return new Proxy({}, { get: function (_, k) {
+      if (k === 'withSuccessHandler') return function (f) { return runner(f, fail); };
+      if (k === 'withFailureHandler') return function (f) { return runner(ok, f); };
+      return function () {
+        var args = Array.prototype.slice.call(arguments);
+        fetch(PAB_API, { method: 'POST', body: JSON.stringify({ p: PAB_KEY, fn: k, args: args }) })
+          .then(function (r) { return r.json(); })
+          .then(function (j) { if (j.ok) { ok && ok(j.data); } else if (fail) fail(new Error(j.error)); })
+          .catch(function () { fail && fail(new Error('연결이 안 돼요. 잠깐 뒤 새로고침해 주세요')); });
+      };
+    } });
+  }
+  window.google = { script: { run: runner(null, null) } };
+})();
+</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* 구 PAB 대시보드 팔레트: 어두운 바탕 + 매출 초록 · 비용 노랑 · 수익 시안 */
+:root{
+  --bg:#0A0E13; --panel:#121920; --panel2:#18212A; --line:#24313D;
+  --fg:#E9EEF2; --muted:#8696A4; --dim:#4F5E6B;
+  --rev:#22B37E; --cost:#FBD304; --profit:#22E3E3; --loss:#FF6B6B;
+  --sans:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;
+  --num:"Barlow Condensed","IBM Plex Sans KR",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+.app{max-width:1100px;margin:0 auto;min-height:100vh;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums}
+.rev{color:var(--rev)}.cost{color:var(--cost)}.pro{color:var(--profit)}.loss{color:var(--loss)}.mut{color:var(--muted)}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px))}
+.brand{font-family:var(--num);font-weight:700;letter-spacing:.12em;font-size:17px}
+.brand small{font-family:var(--sans);letter-spacing:0;font-weight:500;color:var(--muted);font-size:12px;margin-left:6px}
+.who{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.ro{font-size:11px;color:var(--profit);border:1px solid #1d5a5a;border-radius:99px;padding:0 8px}
+.modsw{display:flex;gap:6px;padding:0 max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));overflow-x:auto}
+.modsw span{font-size:12px;padding:3px 11px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.modsw span.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:700}
+.modsw span.off{border-style:dashed;opacity:.5}
+main{padding:4px max(12px,env(safe-area-inset-right,0px)) 16px max(12px,env(safe-area-inset-left,0px));display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));align-items:start}
+main>.full{grid-column:1/-1}
+.card{background:var(--panel);border-radius:14px;padding:13px 14px;display:grid;gap:8px;min-width:0}
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.hd h3{margin:0;font-size:13.5px}
+.hd .s{font-size:11.5px;color:var(--muted)}
+.big{font-family:var(--num);font-weight:700;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+.mid{font-family:var(--num);font-weight:600;font-size:22px;line-height:1.05;font-variant-numeric:tabular-nums}
+.unit{font-size:13px;font-family:var(--sans);font-weight:500;color:var(--muted);margin-left:2px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:12.5px}
+.row .k{color:var(--muted)}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.trio>div{background:var(--panel2);border-radius:10px;padding:8px 9px;display:grid;gap:2px;min-width:0}
+.trio .k{font-size:10.5px;color:var(--muted)}
+.meter{height:10px;border-radius:99px;background:var(--panel2);overflow:hidden;display:flex}
+.meter i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.seg{display:flex;background:var(--panel2);border-radius:9px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:600 12.5px var(--sans);padding:7px 4px;border-radius:7px;cursor:pointer}
+.seg button.on{background:var(--fg);color:var(--bg)}
+button:focus-visible,input:focus-visible,.hb .l:focus-visible{outline:2px solid var(--profit);outline-offset:2px}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--muted);font-family:var(--sans);font-size:10px}
+.hb{display:grid;gap:7px}
+.hb .l{display:grid;grid-template-columns:minmax(118px,auto) 1fr 92px;gap:8px;align-items:center;font-size:12.5px}
+.hb .l.click{cursor:pointer}
+.hb .l .t{height:9px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.hb .l .t i{display:block;height:100%;border-radius:99px}
+.hb .l .v{text-align:right;font-family:var(--num);font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hb .l .n{color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb .subs{grid-column:1/-1;background:var(--panel2);border-radius:9px;padding:8px 10px;display:grid;gap:4px;font-size:12px}
+.flag{font-size:10px;color:var(--loss);border:1px solid #5a2525;border-radius:99px;padding:0 6px;margin-left:4px}
+.note{font-size:12px;color:var(--muted);background:var(--panel2);border-radius:9px;padding:8px 10px}
+.note b{color:var(--fg)}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:11px}
+th:first-child,td:first-child{text-align:left}
+td.n{font-family:var(--num);font-size:15px}
+tr.cur td{background:var(--panel2)}
+.tabs{position:fixed;left:0;right:0;bottom:0;display:grid;border-top:1px solid var(--line);background:var(--panel);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
+.tab{border:0;background:transparent;color:var(--dim);font:500 11.5px var(--sans);padding:9px 0 11px;display:grid;justify-items:center;gap:4px;cursor:pointer}
+.tab i{width:20px;height:3px;border-radius:2px;background:currentColor;opacity:.7}
+.tab.on{color:var(--fg)}
+.tab.on i{background:var(--profit);opacity:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:500 13px var(--sans);padding:7px 11px;border-radius:99px;cursor:pointer}
+.chip.on{background:var(--profit);color:var(--bg);border-color:var(--profit);font-weight:700}
+.chip.sug{border-color:var(--profit);color:var(--profit)}
+.btn{border:0;border-radius:10px;font:700 14px var(--sans);padding:11px 14px;cursor:pointer}
+.btn.pri{background:var(--profit);color:var(--bg)}
+.btn.sec{background:var(--panel2);color:var(--fg)}
+.btn:disabled{opacity:.4;cursor:default}
+.chk{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:8px 10px;font:14px var(--sans);width:100%}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9;max-width:90vw}
+.center{display:grid;place-items:center;min-height:60vh;text-align:center;color:var(--muted);padding:24px}
+.btb{font-family:var(--num);letter-spacing:.32em;font-size:12px;color:var(--dim);text-align:center;padding:6px 0 4px}
+@media (max-width:420px){.big{font-size:30px}.hb .l{grid-template-columns:108px 1fr 84px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar"><span class="brand">PAB<small>관리자</small></span><span class="who" id="who"></span></header>
+  <div class="modsw"><span class="on">재무</span><span class="off">인원</span><span class="off">회의록</span><span class="off">결정</span></div>
+  <main id="main"><div class="center full">불러오는 중…</div></main>
+  <div class="btb">BREAK THE BRICK</div>
+</div>
+<nav class="tabs" id="tabs"></nav>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+'use strict';
+let D = null;
+const S = { tab: 'home', mode: 'acc', pl: 'm', classRange: 3, openCat: null, rv: 0, rvCat: null, rvSub: null, up: { files: [], preview: null, result: null, busy: '' } };
+try { const t = localStorage.getItem('pabTab'); if (t) S.tab = t; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const man = x => Math.round((x || 0) / 1e4);
+const fmt = n => (n < 0 ? '-' : '') + Math.abs(Math.round(n)).toLocaleString('ko-KR');
+const fm = x => fmt(man(x));                       // 원 → 만원 글자
+const sgn = x => (man(x) > 0 ? '+' : '') + fm(x);
+const sum = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const CAT_COLOR = { '인건비': '#2F80ED', '임대료 및 보험료': '#9B6BFF', '공과금': '#FF8A3D', '유지비+셋팅비': '#22B37E', '차량(리스)': '#E85D9A', '세금 및 세무사': '#8696A4', '이자': '#4F5E6B' };
+const CLASS_COLOR = { '성인 일반': '#22B37E', '성인 오전할인': '#1E8A62', '성인 타임할인': '#7FD8B4', '키즈': '#22E3E3', '키즈 마스터즈': '#9B6BFF', '아쿠아로빅': '#2F80ED', '퀄리티': '#E85D9A', 'OLYMPIAN': '#FBD304', '자유수영': '#FF8A3D', '사물함': '#8696A4', '일요일 패스권': '#C9A227', '기타': '#4F5E6B' };
+const FLAG = ['대표 카드', '차량(리스)'];
+const SHORT = { '임대료 및 보험료': '사용료·보험', '유지비+셋팅비': '유지비', '세금 및 세무사': '세무', '법인식비+대표경비': '법인식비' };
+const sh = c => SHORT[c] || c;
+function el(tag, attrs, parent, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 3200); }
+
+// ---------- 계산 ----------
+const isAdmin = () => D.user.role === '관리자';
+const done = () => D.months.filter(m => m.m < D.cur);                       // 끝난 달
+const accCats = () => Object.keys(D.accrue || {});
+const net = mo => sum(mo.rev) - mo.refund;
+function costOf(mo, mode) {
+  let c = sum(mo.cost);
+  if ((mode || S.mode) === 'acc' && mo.m <= D.cur) accCats().forEach(k => { c += D.accrue[k].monthly - (mo.cost[k] || 0); });
+  return c;
+}
+function catCost(mo, k, mode) { return (mode || S.mode) === 'acc' && D.accrue[k] && mo.m <= D.cur ? D.accrue[k].monthly : (mo.cost[k] || 0); }
+// 2달마다 고지되는 요금(수도): 낸 돈 ÷ (고지서 장수 × 2달). 밀려서 몇 장을 한 번에 내도 맞게, 한 달에 낸 금액 ÷ 보통 고지액으로 장수를 센다
+const BILL2 = [['공과금', '수도']];
+function bill2(k) {
+  const b = BILL2.find(x => x[0] === k);
+  const arr = b && D.sub[k] && D.sub[k][b[1]];
+  if (!arr) return null;
+  const paid = arr.slice(0, D.cur - 1).filter(x => x > 0);
+  if (!paid.length) return null;
+  const typ = paid.slice().sort((x, y) => x - y)[Math.floor((paid.length - 1) / 2)];   // 보통 고지액(중앙값, 짝수면 작은 쪽)
+  const bills = paid.reduce((a, x) => a + Math.max(1, Math.round(x / typ)), 0);
+  return { sub: b[1], monthly: paid.reduce((a, x) => a + x, 0) / (bills * 2), bills, cashAvg: paid.reduce((a, x) => a + x, 0) / Math.max(1, done().length) };
+}
+function baseline(k) {
+  const ms = done();
+  if (!ms.length) return 0;
+  let v = ms.reduce((a, mo) => a + catCost(mo, k, 'acc'), 0) / ms.length;
+  const b = bill2(k);
+  if (b) v += b.monthly - b.cashAvg;
+  return v;
+}
+const isOne = c => (D.oneoff || []).includes(c);
+const planCats = () => D.costCats.filter(c => !isOne(c));          // 평균·손익분기에 들어가는 비용
+const ctrlCats = () => planCats().filter(c => !D.fixed.includes(c));
+function bep() {
+  let b = planCats().reduce((a, k) => a + baseline(k), 0);
+  if (S.mode === 'cash') accCats().forEach(k => {
+    const mo = D.months[D.cur - 1];
+    b -= D.accrue[k].monthly;
+    b += (D.cur - 1) % 3 === 0 ? Math.max(mo.cost[k] || 0, D.accrue[k].lastQuarter) : (mo.cost[k] || 0);
+  });
+  return b;
+}
+const curMo = () => D.months[D.cur - 1];
+const modeLabel = () => (S.mode === 'acc' ? '월할' : '통장');
+
+// ---------- 차트 ----------
+function flowChart(box, bepV) {
+  box.innerHTML = '';
+  const cur = D.daily.cur, prev = D.daily.prev;
+  const today = +D.today.slice(8, 10);
+  const lastDay = D.lastDate && D.lastDate.slice(0, 7) === D.today.slice(0, 7) ? +D.lastDate.slice(8, 10) : today;
+  const curPart = cur.slice(0, lastDay);
+  const W = 320, H = 150, L = 34, R = 14, T = 10, B = 20;
+  const mx = Math.max(bepV, ...prev, ...curPart) * 1.08 || 1;
+  const step = mx > 2e8 ? 1e8 : mx > 6e7 ? 5e7 : 2e7;
+  const top = Math.ceil(mx / step) * step;
+  const days = D.daily.curDays;
+  const x = d => L + (d - 1) / (days - 1) * (W - L - R), y = v => T + (1 - v / top) * (H - T - B);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '이번 달 누적 매출과 손익분기선' }, box);
+  for (let v = 0; v <= top; v += step) { el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: css('--line') }, s); el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, s, v >= 1e8 ? (v / 1e8) + '억' : v ? man(v) / 1000 + '천' : '0'); }
+  [1, 10, 20, days].forEach(d => el('text', { x: x(d), y: H - 5, 'text-anchor': 'middle' }, s, d + '일'));
+  if (prev.length) el('path', { d: prev.map((v, i) => (i ? 'L' : 'M') + x(Math.min(i + 1, days)) + ' ' + y(v)).join(' '), fill: 'none', stroke: css('--dim'), 'stroke-width': 1.6 }, s);
+  el('line', { x1: L, x2: W - R, y1: y(bepV), y2: y(bepV), stroke: css('--cost'), 'stroke-width': 1.4, 'stroke-dasharray': '4 3' }, s);
+  el('text', { x: W - R, y: y(bepV) - 4, 'text-anchor': 'end', style: 'fill:' + css('--cost') }, s, '손익분기 ' + fm(bepV));
+  if (curPart.length) {
+    el('path', { d: 'M' + x(1) + ' ' + y(0) + ' ' + curPart.map((v, i) => 'L' + x(i + 1) + ' ' + y(v)).join(' ') + ' L' + x(curPart.length) + ' ' + y(0) + 'Z', fill: css('--rev'), 'fill-opacity': .15 }, s);
+    el('path', { d: curPart.map((v, i) => (i ? 'L' : 'M') + x(i + 1) + ' ' + y(v)).join(' '), fill: 'none', stroke: css('--rev'), 'stroke-width': 2.2 }, s);
+    el('circle', { cx: x(curPart.length), cy: y(curPart[curPart.length - 1]), r: 3.5, fill: css('--rev') }, s);
+  }
+  el('line', { x1: x(today), x2: x(today), y1: T, y2: H - B, stroke: css('--muted'), 'stroke-dasharray': '2 3' }, s);
+  el('text', { x: x(today) + 3, y: T + 9 }, s, '오늘');
+}
+
+function plChart(box, labs, revs, costs) {
+  box.innerHTML = '';
+  const W = 320, H = 190, L = 34, R = 6, T = 10, B = 20;
+  const pro = revs.map((r, i) => r - costs[i]);
+  const mx = Math.max(...revs, ...costs, 1), mn = Math.min(0, ...pro);
+  const step = mx > 5e8 ? 2e8 : mx > 2e8 ? 1e8 : 5e7;
+  const top = Math.ceil(mx / step) * step, bot = Math.floor(mn / step) * step;
+  const y = v => T + (top - v) / (top - bot) * (H - T - B);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '매출 비용 수익' }, box);
+  for (let v = bot; v <= top; v += step) { el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: v === 0 ? css('--muted') : css('--line') }, s); el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, s, v ? (v / 1e8).toFixed(v % 1e8 ? 1 : 0) + '억' : '0'); }
+  const n = labs.length, gw = (W - L - R) / n, bw = Math.min(gw * .3, 26);
+  labs.forEach((lb, i) => {
+    const cx = L + gw * i + gw / 2;
+    el('rect', { x: cx - bw - 1, y: y(revs[i]), width: bw, height: Math.max(0, y(0) - y(revs[i])), fill: css('--rev'), rx: 2 }, s);
+    el('rect', { x: cx + 1, y: y(costs[i]), width: bw, height: Math.max(0, y(0) - y(costs[i])), fill: css('--cost'), rx: 2 }, s);
+    el('text', { x: cx, y: H - 5, 'text-anchor': 'middle' }, s, lb);
+  });
+  if (n > 1) el('path', { d: pro.map((p, i) => (i ? 'L' : 'M') + (L + gw * i + gw / 2) + ' ' + y(p)).join(' '), fill: 'none', stroke: css('--profit'), 'stroke-width': 1.8 }, s);
+  pro.forEach((p, i) => el('circle', { cx: L + gw * i + gw / 2, cy: y(p), r: 3, fill: p >= 0 ? css('--profit') : css('--loss'), stroke: css('--panel'), 'stroke-width': 1.2 }, s));
+}
+
+function shareChart(box, vals, hiFrom) {
+  box.innerHTML = '';
+  const W = 320, H = 110, L = 26, R = 6, T = 14, B = 18;
+  const top = Math.max(30, Math.ceil(Math.max(...vals, 1) / 10) * 10);
+  const y = v => T + (1 - v / top) * (H - T - B);
+  const s = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '홈페이지 결제 비중 월별' }, box);
+  for (let v = 0; v <= top; v += 10) { el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: css('--line') }, s); el('text', { x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, s, v + '%'); }
+  const gw = (W - L - R) / vals.length;
+  vals.forEach((v, i) => {
+    const cx = L + gw * i + gw / 2, hi = i >= hiFrom;
+    el('rect', { x: cx - gw * .3, y: y(v), width: gw * .6, height: y(0) - y(v), rx: 2, fill: hi ? css('--profit') : css('--dim') }, s);
+    el('text', { x: cx, y: H - 5, 'text-anchor': 'middle' }, s, (i + 1) + '');
+    if (hi) el('text', { x: cx, y: y(v) - 3, 'text-anchor': 'middle', style: 'fill:' + css('--profit') }, s, Math.round(v) + '%');
+  });
+}
+
+function hbars(rows, max, color) {
+  return '<div class="hb">' + rows.map(r => `<div class="l${r.click ? ' click' : ''}"${r.click ? ` tabindex="0" data-cat="${esc(r.click)}"` : ''}><span class="n">${r.dot ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${r.dot};margin-right:5px"></i>` : ''}${esc(r.n)}${r.flag ? '<span class="flag">줄일</span>' : ''}</span><span class="t"><i style="width:${Math.max(0, Math.min(100, r.v / max * 100))}%;background:${r.color || color}"></i></span><span class="v">${r.txt}</span></div>${r.after || ''}`).join('') + '</div>';
+}
+
+const modeSeg = () => `<div class="seg full" role="group" aria-label="기준"><button type="button" data-mode="acc" class="${S.mode === 'acc' ? 'on' : ''}">월할 (기본)</button><button type="button" data-mode="cash" class="${S.mode === 'cash' ? 'on' : ''}">통장 기준</button></div>`;
+
+// ---------- 화면: 홈 ----------
+function home() {
+  const mo = curMo(), mode = S.mode;
+  const fixedRows = D.fixed.map(k => ({ k, base: baseline(k), paid: catCost(mo, k) }));
+  const baseFixed = fixedRows.reduce((a, r) => a + r.base, 0);
+  const paidFixed = fixedRows.reduce((a, r) => a + r.paid, 0);
+  const left = fixedRows.filter(r => r.base - r.paid > 3e6 && !(mode === 'acc' && D.accrue[r.k])).sort((a, b) => (b.base - b.paid) - (a.base - a.paid)).slice(0, 3);
+  const accNote = accCats().map(k => {
+    const a = D.accrue[k], q = (D.cur - 1) % 3 === 0, paidNow = (mo.cost[k] || 0) >= 1e7;
+    if (mode === 'acc') return `${sh(k)}는 월할 <b>${fm(a.monthly)}만</b>으로 반영`;
+    return q && !paidNow ? `분기 ${sh(k)} <b>약 ${fm(a.lastQuarter)}만</b> 나갈 차례` : '';
+  }).filter(Boolean);
+  const meterMax = Math.max(baseFixed, paidFixed) || 1;
+  const B = bep(), n = net(mo), c = costOf(mo), p = n - c, otherP = n - costOf(mo, mode === 'acc' ? 'cash' : 'acc');
+  // 고정비 밖의 비용(손익 탭 비용 = 고정비 + 관리 가능 + 일회성)
+  const ctrlNow = ctrlCats().reduce((a, k) => a + catCost(mo, k), 0), oneNow = (D.oneoff || []).reduce((a, k) => a + (mo.cost[k] || 0), 0);
+  const qi = Math.floor((D.cur - 1) / 3);
+  const qSum = (a, b) => { let r = 0, cc = 0; D.months.slice(a, b).forEach(m => { if (m.m <= D.cur) { r += net(m); cc += costOf(m); } }); return [r, cc]; };
+  const [qr, qc] = qSum(qi * 3, qi * 3 + 3), [pr, pc] = qi ? qSum(qi * 3 - 3, qi * 3) : [0, 0], [yr, yc] = qSum(0, 12);
+  const pc2 = x => `<span class="mid ${x >= 0 ? 'pro' : 'loss'} num">${sgn(x)}</span>`;
+  $('main').innerHTML = modeSeg() + `
+  <div class="card">
+    <div class="hd"><h3>${D.cur}월 고정비</h3><span class="s">월 ${fm(baseFixed)}만 중 (${done().length}개월 평균)</span></div>
+    <div><span class="big cost num">${fm(paidFixed)}</span><span class="unit">만 나감</span></div>
+    <div class="meter">${fixedRows.map(r => `<i style="width:${r.paid / meterMax * 100}%;background:${CAT_COLOR[r.k] || '#4F5E6B'}"></i>`).join('')}</div>
+    <div class="legend">${fixedRows.map(r => `<span><i style="background:${CAT_COLOR[r.k] || '#4F5E6B'}"></i>${sh(r.k)} ${fm(r.paid)}</span>`).join('')}</div>
+    <div class="note">${left.length ? '남은 것: ' + left.map(r => `${sh(r.k)} 약 <b>${fm(r.base - r.paid)}만</b>`).join(' · ') : '평균만큼 다 나갔어요'}${accNote.length ? '<br>' + accNote.join(' · ') : ''}</div>
+    <div class="row" style="border-top:1px solid var(--line);padding-top:8px"><span class="k">이 밖에 관리 가능 ${fm(ctrlNow)}만${oneNow ? ` · 일회성 ${fm(oneNow)}만` : ''}</span><span>이번 달 비용 <b class="num cost" style="font-size:16px">${fm(c)}</b>만</span></div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>손익분기까지 매출</h3><span class="s">${D.lastDate.slice(5).replace('-', '/')} 입금까지</span></div>
+    <div class="row"><span><span class="mid rev num">${fm(n)}</span><span class="unit">만</span></span><span class="mut">목표 <b class="num" style="font-size:15px;color:var(--fg)">${fm(B)}</b>만 · <b class="pro num" style="font-size:15px">${B ? Math.round(n / B * 100) : 0}%</b></span></div>
+    <div id="flow"></div>
+    <div class="legend"><span><i style="background:var(--rev)"></i>${D.cur}월 누적</span><span><i style="background:var(--dim)"></i>지난달</span><span><i style="background:var(--cost)"></i>손익분기 (${modeLabel()})</span></div>
+    <div class="note">${n >= B ? '손익분기 넘었어요' : `남은 매출 <b>${fm(B - n)}만</b>`}. 손익분기 = 끝난 달 평균 비용(${modeLabel()}).</div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>${D.cur}월 수익</h3><span class="s">${modeLabel()} 기준</span></div>
+    <div><span class="big num ${p >= 0 ? 'pro' : 'loss'}">${sgn(p)}</span><span class="unit">만</span></div>
+    <div class="row"><span class="k">매출 ${fm(n)} − 비용 ${fm(c)}</span><span class="mut">${mode === 'acc' ? '통장' : '월할'} 기준이면 ${sgn(otherP)}</span></div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>누적 수익</h3><span class="s">${modeLabel()} · 만원</span></div>
+    <div class="trio">
+      <div><span class="k">${qi + 1}분기 (진행)</span>${pc2(qr - qc)}<span class="k">매출 ${fm(qr)}</span></div>
+      <div><span class="k">${qi ? qi + '분기' : '-'}</span>${qi ? pc2(pr - pc) : '<span class="mid mut">-</span>'}<span class="k">${qi ? '매출 ' + fm(pr) : ''}</span></div>
+      <div><span class="k">${D.year}년</span>${pc2(yr - yc)}<span class="k">${(yr / 1e8).toFixed(2)}억 / ${(yc / 1e8).toFixed(2)}억</span></div>
+    </div>
+  </div>`;
+  flowChart($('flow'), B);
+}
+
+// ---------- 화면: 손익 ----------
+function pl() {
+  const ms = D.months.filter(m => m.m <= D.cur);
+  let labs, revs, costs;
+  if (S.pl === 'm') { labs = ms.map(m => m.m + ''); revs = ms.map(net); costs = ms.map(m => costOf(m)); }
+  else if (S.pl === 'q') {
+    labs = []; revs = []; costs = [];
+    for (let q = 0; q * 3 < D.cur; q++) { const g = ms.slice(q * 3, q * 3 + 3); labs.push((q + 1) + 'Q' + (q * 3 + 3 > D.cur ? '*' : '')); revs.push(g.reduce((a, m) => a + net(m), 0)); costs.push(g.reduce((a, m) => a + costOf(m), 0)); }
+  } else { labs = [D.year + '']; revs = [ms.reduce((a, m) => a + net(m), 0)]; costs = [ms.reduce((a, m) => a + costOf(m), 0)]; }
+  const unit = { m: '월', q: '분기', y: '연' }[S.pl];
+  const tot = (a) => a.reduce((x, y) => x + y, 0);
+  $('main').innerHTML = modeSeg() + `
+  <div class="seg full" role="group" aria-label="기간">${['m', 'q', 'y'].map(k => `<button type="button" data-pl="${k}" class="${S.pl === k ? 'on' : ''}">${{ m: '월', q: '분기', y: '연' }[k]}</button>`).join('')}</div>
+  <div class="card">
+    <div class="hd"><h3>${{ m: '월별', q: '분기별', y: '올해' }[S.pl]} 매출 · 비용 · 수익</h3><span class="s">${modeLabel()} 기준</span></div>
+    <div id="plc"></div>
+    <div class="legend"><span><i style="background:var(--rev)"></i>매출</span><span><i style="background:var(--cost)"></i>비용</span><span><i style="background:var(--profit)"></i>수익</span></div>
+  </div>
+  <div class="card tbl">
+    <table><thead><tr><th>${unit}</th><th>매출</th><th>비용</th><th>수익</th></tr></thead><tbody>
+    ${labs.map((lb, i) => `<tr class="${S.pl === 'm' && +lb === D.cur ? 'cur' : ''}"><td>${lb}${S.pl === 'm' ? '월' : ''}</td><td class="n rev">${fm(revs[i])}</td><td class="n cost">${fm(costs[i])}</td><td class="n ${revs[i] - costs[i] >= 0 ? 'pro' : 'loss'}">${sgn(revs[i] - costs[i])}</td></tr>`).join('')}
+    ${labs.length > 1 ? `<tr><td><b>합계</b></td><td class="n rev">${fm(tot(revs))}</td><td class="n cost">${fm(tot(costs))}</td><td class="n ${tot(revs) - tot(costs) >= 0 ? 'pro' : 'loss'}">${sgn(tot(revs) - tot(costs))}</td></tr>` : ''}
+    </tbody></table>
+    <p class="mut" style="font-size:11.5px;margin:8px 0 0">만원. 매출 = 은행 입금 − 환불. ${S.mode === 'acc' ? accCats().map(k => `${sh(k)}는 월 ${fm(D.accrue[k].monthly)}만씩(낸 분기 ${D.accrue[k].paidQuarters}개 ÷ ${D.accrue[k].paidQuarters * 3}달)`).join(', ') + '.' : '통장에서 실제로 나간 달 기준.'}</p>
+  </div>`;
+  plChart($('plc'), labs, revs, costs);
+}
+
+// ---------- 화면: 비용 ----------
+function cost() {
+  const mo = curMo(), dn = done().length;
+  const row = k => {
+    const b = baseline(k), now = catCost(mo, k, 'acc');
+    let after = '';
+    if (S.openCat === k) {
+      const subs = Object.entries(D.sub[k] || {}).map(([s, arr]) => [s, dn ? arr.slice(0, D.cur - 1).reduce((a, x) => a + x, 0) / dn : 0, arr[D.cur - 1]]).sort((a, b2) => b2[1] - a[1]);
+      const b2 = bill2(k);
+      after = `<div class="subs">${subs.map(([s, a, c]) => { const isB = b2 && s === b2.sub; return `<div class="row"><span class="k">${esc(s)}${isB ? ` <span class="mut" style="font-size:11px">고지서 ${b2.bills}장 = ${b2.bills * 2}달치</span>` : ''}</span><span class="num" style="font-size:14px">${fm(isB ? b2.monthly : a)} <span class="mut">/ ${fm(c)}</span></span></div>`; }).join('') || '<span class="mut">세부 없음</span>'}${D.accrue[k] ? `<div class="row"><span class="k">월할 반영</span><span class="num" style="font-size:14px">${fm(D.accrue[k].monthly)}</span></div>` : ''}</div>`;
+    }
+    return { n: sh(k), v: b, txt: `${fm(b)}<span class="mut" style="font-size:11px"> / ${fm(now)}</span>`, click: k, flag: FLAG.includes(k), after };
+  };
+  const fx = D.fixed.filter(k => D.costCats.includes(k)), ct = ctrlCats().filter(k => baseline(k) > 0 || (mo.cost[k] || 0) > 0);
+  const bf = fx.reduce((a, k) => a + baseline(k), 0), bc = ct.reduce((a, k) => a + baseline(k), 0);
+  const max = Math.max(...planCats().map(baseline), 1);
+  const cutK = FLAG.filter(k => D.costCats.includes(k)), cut = cutK.reduce((a, k) => a + baseline(k), 0);
+  const top = fx.slice().sort((a, b) => baseline(b) - baseline(a))[0];
+  $('main').innerHTML = `
+  <div class="card">
+    <div class="hd"><h3>월 총비용</h3><span class="s">끝난 ${dn}개월 평균 · 월할</span></div>
+    <div><span class="big cost num">${fm(bf + bc)}</span><span class="unit">만</span></div>
+    <div class="row"><span class="k">고정 ${fm(bf)} · 관리 가능 ${fm(bc)}</span><span class="mut">${sh(top)} ${Math.round(baseline(top) / (bf + bc) * 100)}%</span></div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>고정비</h3><span class="s">월평균 / ${D.cur}월 (누르면 세부)</span></div>
+    ${hbars(fx.map(row), max, css('--cost'))}
+  </div>
+  <div class="card">
+    <div class="hd"><h3>관리 가능</h3><span class="s">월평균 / ${D.cur}월</span></div>
+    ${hbars(ct.map(row), max, css('--cost'))}
+    <div class="note">${cutK.map(sh).join(' + ')} = <b>월 ${fm(cut)}만</b>. 줄이면 손익분기 매출도 그만큼 내려가요.</div>
+  </div>
+  ${(D.oneoff || []).map(k => {
+    const ytd = D.months.reduce((a, m) => a + (m.cost[k] || 0), 0);
+    const subs = Object.entries(D.sub[k] || {}).map(([s2, arr]) => [s2, arr.reduce((a, x) => a + x, 0), arr.map((x, i) => x ? (i + 1) + '월' : '').filter(Boolean).join('·')]).sort((a, b) => b[1] - a[1]);
+    return `<div class="card">
+    <div class="hd"><h3>${esc(k)}</h3><span class="s">올해 합계 · 평균·손익분기에서 뺌</span></div>
+    <div><span class="mid cost num">${fm(ytd)}</span><span class="unit">만</span></div>
+    <div class="subs" style="background:var(--panel2);border-radius:9px;padding:8px 10px;display:grid;gap:4px;font-size:12px">${subs.map(([n2, v, ms]) => `<div class="row"><span class="k">${esc(n2)} <span class="mut" style="font-size:11px">${ms}</span></span><span class="num" style="font-size:14px">${fm(v)}</span></div>`).join('') || '<span class="mut">아직 없음</span>'}</div>
+    <p class="mut" style="font-size:11.5px;margin:0">100만 원 넘고 다시 안 나갈 돈은 정리함이나 원장에서 '${esc(k)}'로 고르면 여기로 와요.</p>
+  </div>`;
+  }).join('')}`;
+}
+
+// ---------- 화면: 매출 ----------
+function sales() {
+  const mo = curMo();
+  const ch = Object.entries(mo.rev).sort((a, b) => b[1] - a[1]);
+  const chMax = Math.max(...ch.map(e => e[1]), 1);
+  const months = [...new Set(D.classRows.map(r => r[0]))].sort();
+  const pick = S.classRange === 3 ? months.filter(m => m < D.today.slice(0, 7)).slice(-3) : months;
+  const agg = {};
+  D.classRows.filter(r => pick.includes(r[0])).forEach(r => { agg[r[1]] = (agg[r[1]] || 0) + r[4]; });
+  const cl = Object.entries(agg).sort((a, b) => b[1] - a[1]), clT = cl.reduce((a, e) => a + e[1], 0) || 1;
+  const adult = cl.filter(e => e[0].startsWith('성인')).reduce((a, e) => a + e[1], 0);
+  const share = D.months.filter(m => m.m <= D.cur).map(m => { const t = sum(m.rev); return t ? (m.rev['홈페이지'] || 0) / t * 100 : 0; });
+  $('main').innerHTML = `
+  <div class="card">
+    <div class="hd"><h3>${D.cur}월 순매출</h3><span class="s">은행 입금 − 환불 · ${D.lastDate.slice(5).replace('-', '/')}까지</span></div>
+    <div><span class="big rev num">${fm(net(mo))}</span><span class="unit">만</span></div>
+    ${hbars(ch.map(([k, v]) => ({ n: k, v, txt: fm(v) })), chMax, css('--rev'))}
+    ${mo.refund ? `<div class="row"><span class="k">환불</span><span class="num loss" style="font-size:15px">-${fm(mo.refund)}</span></div>` : ''}
+  </div>
+  <div class="card">
+    <div class="hd"><h3>수업별</h3><span class="s">${pick.length ? pick[0].slice(5) + '~' + pick[pick.length - 1].slice(5) + '월' : ''} 결제 기준</span></div>
+    <div class="seg" role="group" aria-label="기간"><button type="button" data-cr="3" class="${S.classRange === 3 ? 'on' : ''}">최근 3개월</button><button type="button" data-cr="0" class="${S.classRange === 0 ? 'on' : ''}">올해 전체</button></div>
+    <div class="meter" style="height:14px">${cl.map(([k, v]) => `<i style="width:${v / clT * 100}%;background:${CLASS_COLOR[k] || '#4F5E6B'}"></i>`).join('')}</div>
+    ${hbars(cl.map(([k, v]) => ({ n: k, v, txt: `${(v / clT * 100).toFixed(1)}%<span class="mut" style="font-size:11px"> ${fm(v)}</span>`, color: CLASS_COLOR[k], dot: CLASS_COLOR[k] })), cl.length ? cl[0][1] : 1)}
+    <div class="note">성인(일반·오전·타임) <b>${Math.round(adult / clT * 100)}%</b>. 일일정산 + 홈페이지 주문을 수업 이름 규칙으로 나눈 값(수업매출 탭).</div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>홈페이지 결제 비중</h3><span class="s">월별 · 은행 입금 기준</span></div>
+    <div id="share"></div>
+  </div>
+  ${members()}`;
+  shareChart($('share'), share, Math.max(0, share.length - 2));
+}
+
+// 매출 탭 아래: 어디서 매출이 나오나(통합명부 인원 × 1인 월 금액 + 회원권 외 수입) → 손익분기 회원 수
+function members() {
+  const R = D.roster || {};
+  if (R.error || !R.counts) return `<div class="card"><div class="hd"><h3>어디서 매출이 나오나</h3></div><p class="mut" style="font-size:12.5px;margin:0">${esc(R.error || '통합명부를 아직 못 읽었어요')}</p></div>`;
+  const rows = D.groups.map(g => ({ g, n: R.counts[g.key] || 0 })).filter(x => x.n > 0);
+  rows.forEach(x => { x.amt = x.n * x.g.price; });
+  const mem = rows.reduce((a, x) => a + x.amt, 0), ppl = rows.reduce((a, x) => a + x.n, 0), avg = ppl ? mem / ppl : 0;
+  const months = [...new Set(D.classRows.map(r => r[0]))].sort().filter(m => m < D.today.slice(0, 7)).slice(-3);
+  const non = (D.nonMember || []).map(k => ({ k, amt: D.classRows.filter(r => r[1] === k && months.includes(r[0])).reduce((a, r) => a + r[4], 0) / Math.max(1, months.length) }));
+  const nonT = non.reduce((a, x) => a + x.amt, 0), tot = mem + nonT;
+  const cost = planCats().reduce((a, k) => a + baseline(k), 0);
+  const need = avg ? Math.round((cost - nonT) / avg) : 0, now = R.total || ppl, gap = now - need;
+  const noPrice = rows.filter(x => !x.g.price);
+  const max = Math.max(...rows.map(x => x.amt), ...non.map(x => x.amt), 1);
+  return `<div class="card">
+    <div class="hd"><h3>어디서 매출이 나오나</h3><span class="s">통합명부 ${esc(R.asOf)} · 월 추정</span></div>
+    <div class="row"><span><span class="big rev num">${fm(tot)}</span><span class="unit">만 / 월</span></span><span class="mut">회원권 ${Math.round(mem / tot * 100)}%</span></div>
+    ${hbars(rows.map(x => ({ n: `${x.g.label} ${fmt(x.n)}명`, v: x.amt, txt: fm(x.amt), color: x.g.key === 'daily' ? css('--profit') : css('--rev') }))
+      .concat(non.map(x => ({ n: x.k, v: x.amt, txt: fm(x.amt), color: css('--dim') }))), max)}
+    <div class="legend"><span><i style="background:var(--rev)"></i>회원권</span><span><i style="background:var(--profit)"></i>매일반</span><span><i style="background:var(--dim)"></i>회원권 외 수입</span><span>만원 / 월</span></div>
+    <div class="note">회원 ${fmt(ppl)}명 · 1인 평균 <b>${(avg / 1e4).toFixed(1)}만</b>. 매일반 1명 = 주2~3회 ${(D.groups.find(g => g.key === 'daily').price / D.groups.find(g => g.key === 'part').price).toFixed(2)}명분. 1인 금액은 안내표 요금에 할인을 반영한 추정(키즈는 마스터즈 포함), 회원권 외 수입은 ${months.length ? months[0].slice(5) + '~' + months.at(-1).slice(5) + '월' : ''} 평균.${noPrice.length ? ' 요금 미설정: ' + noPrice.map(x => esc(x.g.label)).join(', ') : ''}</div>
+  </div>
+  <div class="card">
+    <div class="hd"><h3>손익분기 회원 수</h3><span class="s">목표 ${fmt(R.goal || 0)}명</span></div>
+    <div class="row"><span><span class="big pro num">${fmt(need)}</span><span class="unit">명</span></span><span class="mut">지금 <b class="num" style="font-size:16px;color:var(--fg)">${fmt(now)}</b>명</span></div>
+    <div class="meter"><i style="width:${Math.min(100, Math.min(now, need) / Math.max(now, need, R.goal || 0) * 100)}%;background:var(--rev)"></i>${gap < 0 ? `<i style="width:${-gap / Math.max(need, R.goal || 0) * 100}%;background:var(--loss)"></i>` : `<i style="width:${gap / Math.max(now, R.goal || 0) * 100}%;background:var(--profit)"></i>`}</div>
+    <div class="row"><span class="k ${gap >= 0 ? 'pro' : 'loss'}">${gap >= 0 ? `+${fmt(gap)}명 여유 (월 약 +${fm(gap * avg)}만)` : `${fmt(-gap)}명 더 필요`}</span><span class="mut">회원 10명 = 월 ${fm(avg * 10)}만</span></div>
+    <div class="note">(월 비용 ${fm(cost)}만 − 회원권 외 수입 ${fm(nonT)}만) ÷ 1인 평균 ${(avg / 1e4).toFixed(1)}만.</div>
+  </div>`;
+}
+
+// ---------- 화면: 정리함 ----------
+function review() {
+  const items = D.reviewItems;
+  if (!items.length) { $('main').innerHTML = '<div class="center full">정리할 거래가 없어요 👍</div>'; return; }
+  if (S.rv >= items.length) S.rv = 0;
+  const it = items[S.rv];
+  const outAmt = items.filter(x => x.kind === '출금').reduce((a, x) => a + x.amt, 0), inAmt = items.filter(x => x.kind === '입금').reduce((a, x) => a + x.amt, 0);
+  const sug = it.kind === '입금' ? '매출' : '기타';
+  const cats = D.allCats;
+  const subs = S.rvCat ? (D.subsByCat[S.rvCat] || []) : [];
+  const bank = /통장/.test(it.src);
+  $('main').innerHTML = `
+  <div class="card full" style="max-width:520px">
+    <div class="row"><span class="k">${S.rv + 1} / ${items.length}건</span><span class="k">출금 ${fm(outAmt)}만 · 입금 ${fm(inAmt)}만</span></div>
+    <div class="meter"><i style="width:${(S.rv + 1) / items.length * 100}%;background:var(--profit)"></i></div>
+    <div class="row"><span class="k">${it.date} · ${esc(it.src)} ${it.kind}</span><button type="button" class="chip" id="rv-next">다음 건 →</button></div>
+    <div class="row"><b style="font-size:17px">${esc(it.who)}</b><span class="mid num ${it.kind === '입금' ? 'rev' : 'cost'}">${fmt(it.amt)}원</span></div>
+    ${it.memo ? `<div class="k mut" style="font-size:12px">적요: ${esc(it.memo)}</div>` : ''}
+    <div class="k mut" style="font-size:12px">카테고리</div>
+    <div class="chips">${cats.map(k => `<button type="button" class="chip${S.rvCat === k ? ' on' : k === sug && !S.rvCat ? ' sug' : ''}" data-rc="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+    ${S.rvCat ? `<div class="k mut" style="font-size:12px">세부</div><div class="chips">${subs.map(s => `<button type="button" class="chip${S.rvSub === s ? ' on' : ''}" data-rs="${esc(s)}">${esc(s)}</button>`).join('')}<button type="button" class="chip${S.rvSub === '' ? ' on' : ''}" data-rs="">없음</button></div>` : ''}
+    <input type="text" id="rv-memo" placeholder="메모 (예: 사업자 주소 비상주 사무실)">
+    ${bank ? '<label class="chk"><input type="checkbox" id="rv-rule" checked> 같은 거래처는 다음부터 자동 분류 (분류규칙에 추가)</label>' : ''}
+    <button type="button" class="btn pri" id="rv-save" ${S.rvCat ? '' : 'disabled'}>${S.rvCat ? esc(S.rvCat) + (S.rvSub ? ' · ' + esc(S.rvSub) : '') + '로 저장' : '카테고리를 고르세요'}</button>
+  </div>`;
+}
+
+function saveReview() {
+  const it = D.reviewItems[S.rv];
+  const memo = $('rv-memo').value, rule = $('rv-rule') ? $('rv-rule').checked : false;
+  const btn = $('rv-save'); btn.disabled = true; btn.textContent = '저장 중…';
+  call('saveReview', [it.key, S.rvCat, S.rvSub || '', memo, rule], res => {
+    toast(`${it.who} → ${S.rvCat} 저장${res && res.rule ? ' · ' + res.rule : ''}`);
+    D.reviewItems.splice(S.rv, 1); D.reviewCount--;
+    S.rvCat = null; S.rvSub = null;
+    D.stale = true;
+    render();
+  }, err => { btn.disabled = false; btn.textContent = '다시 저장'; toast(err); });
+}
+
+// ---------- 화면: 자료 올리기 ----------
+function upload() {
+  const U = S.up;
+  const pv = U.preview, rs = U.result;
+  const ok = pv ? pv.filter(p => !p.error) : [];
+  const fresh = ok.reduce((a, p) => a + p.fresh, 0), flips = ok.reduce((a, p) => a + (p.changed || 0), 0);
+  const line = p => p.error
+    ? `<div class="row"><span><b>${esc(p.kind)}</b> <span class="mut">${esc(p.name)}</span></span><span class="loss" style="font-size:12px">못 올림</span></div><div class="note" style="margin-top:-2px">${esc(p.error)}</div>`
+    : `<div class="row"><span><b>${esc(p.kind)}</b> <span class="mut">${esc(p.from)} ~ ${esc(p.to)} · ${fmt(p.rows)}건</span></span><span class="num ${p.fresh ? 'pro' : 'mut'}" style="font-size:16px">새 ${fmt(p.fresh)}건${p.changed ? ` · 취소 ${fmt(p.changed)}` : ''}</span></div>`;
+  let body = '';
+  if (rs) {
+    const L = rs.ledger;
+    body = `<div class="card full" style="max-width:560px">
+      <div class="hd"><h3>반영했어요</h3></div>
+      ${rs.files.map(f => f.error ? line(f) : `<div class="row"><span><b>${esc(f.kind)}</b></span><span class="num pro" style="font-size:16px">+${fmt(f.fresh)}건</span></div>`).join('')}
+      ${L ? `<div class="note">원장 갱신: 새 거래 <b>${fmt(L.added)}건</b> · 분류 바뀜 ${fmt(L.changed)}건${L.removed ? ` · 취소된 카드 결제 ${fmt(L.removed)}건 뺌` : ''} · 확인 필요 <b>${fmt(L.todo)}건</b></div>` : '<div class="note">새 거래가 없어서 원장은 그대로예요</div>'}
+      <button type="button" class="btn pri" id="up-review">정리함 열기</button>
+      <button type="button" class="btn sec" id="up-reset">다른 파일 올리기</button>
+    </div>`;
+  } else {
+    body = `<div class="card full" style="max-width:560px">
+      <div class="hd"><h3>자료 올리기</h3><span class="s">우리은행 운영·대출통장, 카드 승인내역 (.xlsx)</span></div>
+      <p class="mut" style="font-size:12.5px;margin:0">기간이 겹쳐도 괜찮아요. 이미 있는 거래는 건너뛰고 새 거래만 원본 탭에 붙인 뒤 원장 갱신까지 해요. 일일정산·홈페이지 주문은 아직 대화로 보내주세요.</p>
+      <label class="btn sec" for="up-file" style="text-align:center">${U.files.length ? `파일 ${U.files.length}개 · 다시 고르기` : '파일 고르기 (여러 개 가능)'}</label>
+      <input type="file" id="up-file" accept=".xlsx" multiple hidden>
+      ${U.busy ? `<div class="note">${esc(U.busy)}</div>` : ''}
+      ${pv ? pv.map(line).join('') : ''}
+      ${pv ? `<button type="button" class="btn pri" id="up-apply" ${(fresh || flips) && !U.busy ? '' : 'disabled'}>${fresh || flips ? `새 거래 ${fmt(fresh)}건${flips ? ` · 취소 ${fmt(flips)}건` : ''} 반영하기` : '반영할 새 거래가 없어요'}</button>` : ''}
+    </div>`;
+  }
+  $('main').innerHTML = body;
+  const inp = $('up-file');
+  if (inp) inp.onchange = () => readFiles([...inp.files]);
+}
+
+function readFiles(list) {
+  if (!list.length) return;
+  S.up = { files: [], preview: null, result: null, busy: '파일 읽는 중…' };
+  render();
+  Promise.all(list.map(f => new Promise((ok, fail) => {
+    const r = new FileReader();
+    r.onload = () => ok({ name: f.name, b64: String(r.result).split(',')[1] || '' });
+    r.onerror = () => fail(new Error(f.name + ' 을 못 읽었어요'));
+    r.readAsDataURL(f);
+  }))).then(files => {
+    S.up.files = files; S.up.busy = '무슨 파일인지 확인하는 중…'; render();
+    call('previewUpload', [files], pv => { S.up.preview = pv; S.up.busy = ''; render(); }, err => { S.up.busy = ''; toast(err); render(); });
+  }, e => { S.up.busy = ''; toast(e.message); render(); });
+}
+
+function applyFiles() {
+  const files = S.up.files.filter(f => (S.up.preview || []).some(p => p.name === f.name && !p.error && (p.fresh || p.changed)));
+  S.up.busy = '원본 탭에 붙이고 원장 갱신하는 중… (10~20초)'; render();
+  call('applyUpload', [files], res => { S.up.result = res; S.up.busy = ''; D.stale = true; render(); }, err => { S.up.busy = ''; toast(err); render(); });
+}
+
+// ---------- 공통 ----------
+const TABS = [['home', '홈'], ['pl', '손익'], ['cost', '비용'], ['sales', '매출'], ['review', '정리함'], ['upload', '올리기']];
+function render() {
+  const tabs = TABS.filter(t => (t[0] !== 'review' && t[0] !== 'upload') || isAdmin());
+  if (!tabs.some(t => t[0] === S.tab)) S.tab = 'home';
+  $('tabs').style.gridTemplateColumns = `repeat(${tabs.length},1fr)`;
+  $('tabs').innerHTML = tabs.map(([k, n]) => `<button type="button" class="tab${S.tab === k ? ' on' : ''}" data-tab="${k}"><i></i>${n}${k === 'review' && D.reviewItems.length ? ' ' + D.reviewItems.length : ''}</button>`).join('');
+  ({ home, pl, cost, sales, review, upload })[S.tab]();
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button,[data-cat]');
+  if (!b || !D) return;
+  const d = b.dataset;
+  if (d.tab) { S.tab = d.tab; try { localStorage.setItem('pabTab', S.tab); } catch (x) {} if (D.stale && S.tab !== 'review' && S.tab !== 'upload') return reload(); render(); window.scrollTo(0, 0); }
+  else if (d.mode) { S.mode = d.mode; render(); }
+  else if (d.pl) { S.pl = d.pl; render(); }
+  else if (d.cr !== undefined) { S.classRange = +d.cr; render(); }
+  else if (d.cat) { S.openCat = S.openCat === d.cat ? null : d.cat; render(); }
+  else if (d.rc !== undefined) { S.rvCat = d.rc; S.rvSub = null; render(); }
+  else if (d.rs !== undefined) { S.rvSub = d.rs; render(); }
+  else if (b.id === 'rv-save') saveReview();
+  else if (b.id === 'up-apply') applyFiles();
+  else if (b.id === 'up-reset') { S.up = { files: [], preview: null, result: null, busy: '' }; render(); }
+  else if (b.id === 'up-review') { S.tab = 'review'; S.up = { files: [], preview: null, result: null, busy: '' }; reload(); }
+  else if (b.id === 'rv-next') { S.rv = (S.rv + 1) % D.reviewItems.length; S.rvCat = null; S.rvSub = null; render(); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.cat) e.target.click(); });
+
+function call(fn, args, ok, fail) {
+  if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(err => fail(err && err.message ? err.message : String(err)))[fn](...args);
+  } else if (window.MOCK) {   // 로컬 미리보기
+    setTimeout(() => (fn === 'getFinance' ? ok(JSON.parse(JSON.stringify(window.MOCK))) : fn === 'ping' ? ok('미리보기') : fn === 'previewUpload' ? ok(args[0].map((f, i) => i === 0 ? { name: f.name, kind: '운영통장', tab: '원본_운영통장', from: '2026.10.01', to: '2026.10.31', rows: 312, fresh: 54 } : { name: f.name, kind: '?', error: '어떤 파일인지 모르겠어요(미리보기)' })) : fn === 'applyUpload' ? ok({ files: args[0].map(f => ({ name: f.name, kind: '운영통장', fresh: 54 })), ledger: { added: 54, changed: 0, todo: 3 } }) : ok({ ok: true, rule: '(미리보기: 저장 안 됨)' })), 150);
+  } else fail('데이터를 불러올 수 없어요');
+}
+
+function load(data) {
+  clearTimeout(load.wait);
+  try {
+    if (!data || !data.months) throw new Error('서버가 빈 데이터를 보냈어요(' + typeof data + ')');
+    D = data; D.stale = false;
+    $('who').innerHTML = esc(D.user.name) + (isAdmin() ? '' : ' <span class="ro">보기 전용</span>');
+    render();
+  } catch (e) { showErr('화면 오류: ' + e.message); }
+}
+function reload() { $('main').innerHTML = '<div class="center full">새로 불러오는 중…</div>'; call('getFinance', [], load, showErr); }
+function showErr(msg) { $('main').innerHTML = `<div class="center full"><div><b style="color:var(--fg)">열 수 없어요</b><p>${esc(msg)}</p></div></div>`; }
+window.addEventListener('error', e => showErr('화면 오류: ' + e.message));
+load.wait = setTimeout(() => showErr('30초 넘게 응답이 없어요. 마지막으로 보인 단계(①/②)와 Apps Script \'실행\' 기록을 알려주세요'), 30000);
+// 단계 표시: 화면 코드 실행 → 서버 연결(ping) → 재무 데이터. 어디서 멈췄는지 바로 보이게
+const step = t => { const m = $('main'); if (!D && m) m.innerHTML = '<div class="center full">' + esc(t) + '</div>'; };
+step('① 화면 준비됨 · 서버 연결 중…');
+call('ping', [], who => {
+  step('② 서버 연결됨(' + (who || '이메일 확인 불가') + ') · 원장 계산 중…');
+  call('getFinance', [], load, msg => { clearTimeout(load.wait); showErr(msg); });
+}, msg => { clearTimeout(load.wait); showErr('서버 연결 실패: ' + msg); });
+})();
+</script>
+</body>
+</html>

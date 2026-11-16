@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" href="icon_192.png?v=1">
 <script>
 // 개인 키: ?p=키로 한 번 열면 이 기기에 기억(홈 화면 앱은 사파리와 저장소가 따로라 주소의 키가 기준)
-var PAB_API = '';
+var PAB_API = 'https://script.google.com/macros/s/AKfycbyhirOC4zYeRmtM8PQ7n2F3AXydpDoxDNWoz-R0GA_3V5t5TrRI1SJgbqnCerhua-iDsg/exec';
 var PAB_KEY = (location.search.match(/[?&]p=([^&]+)/) || [])[1] || '';
 try { if (PAB_KEY) localStorage.setItem('pab-key', PAB_KEY); else PAB_KEY = localStorage.getItem('pab-key') || ''; } catch (e) {}
 if (!PAB_KEY || !PAB_API) document.addEventListener('DOMContentLoaded', function () {

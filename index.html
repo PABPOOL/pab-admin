@@ -138,6 +138,7 @@ main>.monnav{display:flex;align-items:center;justify-content:center;gap:16px;fon
 .card.tap{cursor:pointer}
 .card.tap:active{transform:scale(.99)}
 .more{font-size:12px;color:var(--profit);text-align:right}
+.rchips{display:flex;gap:6px;flex-wrap:wrap}.rchip{font-size:11.5px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}.rchip.ok{color:var(--fg);background:var(--panel2)}
 .drill{position:fixed;inset:0;z-index:8;background:var(--bg);overflow:auto;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
 .dhead{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(12px + env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) 10px max(14px,env(safe-area-inset-left,0px));background:var(--panel);border-bottom:1px solid var(--line)}
 .dhead b{font-size:15px}
@@ -348,6 +349,7 @@ function home() {
     <div class="row">${prevMo ? `<span class="k">지난달 같은 날보다 <b class="num ${n - prevSame >= 0 ? 'pro' : 'loss'}">${sgn(n - prevSame)}</b></span>` : '<span></span>'}${isCur && lastIn ? `<span class="k">최근 입금 ${m}/${lastIn.d} · ${fm(lastIn.v)}만</span>` : ''}</div>
     <div class="more">일별 매출 보기 ›</div>
   </div>
+  ${isCur ? regCard() : ''}
   ${ms.ok ? `<div class="card tap" data-tab="sales">
     <div class="hd"><h3>등록 인원</h3><span class="s">통합명부 ${esc(ms.asOf)} · 지금</span></div>
     <div class="row"><span><span class="big pro num">${fmt(ms.now)}</span><span class="unit">명</span></span><span class="mut">손익분기 ${fmt(ms.need)}명 · 목표 ${fmt(ms.goal)}명</span></div>
@@ -380,6 +382,27 @@ function home() {
 }
 
 // 등록 인원·손익분기 인원(매출 탭 members()와 같은 계산)
+// 'PAB 일일정산'(운영도구 등록 원장): 오늘 등록 매출·신규·재등록 + 근무 마감. 통장 매출과 별개(카드는 1~2일 뒤 통장에 들어옴)
+function regCard() {
+  const R = D.reg;
+  if (!R) return '';
+  if (R.error) return `<div class="card"><div class="hd"><h3>오늘 등록</h3></div><p class="k mut" style="margin:0">${esc(R.error)}</p></div>`;
+  const t = R.days.find(x => x.d === R.today) || { sum: 0, n: 0, neu: 0, re: 0, web: 0, refund: 0 };
+  const mon = R.days.filter(x => x.d.slice(0, 7) === R.today.slice(0, 7));
+  const ms = mon.reduce((a, x) => ({ sum: a.sum + x.sum, neu: a.neu + x.neu, re: a.re + x.re }), { sum: 0, neu: 0, re: 0 });
+  const done = {}; (R.shifts || []).forEach(x => { done[x.w] = x; });
+  const wd = new Date(R.today).getDay();
+  const ws = wd === 0 ? ['오전'] : wd === 6 ? ['오전', '오후'] : ['오전', '오후', '저녁'];
+  const chip = w => done[w] ? `<span class="rchip ok">${w} 마감${done[w].diff ? ` · 차이 ${fmt(done[w].diff)}` : ''}</span>` : `<span class="rchip">${w} 진행 중</span>`;
+  return `<div class="card tap" data-dr="reg">
+    <div class="hd"><h3>오늘 등록</h3><span class="s">${R.today.slice(5).replace('-', '/')} · 운영도구 입력 기준</span></div>
+    <div class="row"><span><span class="big rev num">${fm(t.sum)}</span><span class="unit">만</span></span><span class="mut">신규 <b class="num" style="color:var(--fg)">${t.neu}</b> · 재등록 <b class="num" style="color:var(--fg)">${t.re}</b> · ${t.n}건</span></div>
+    <div class="rchips">${ws.map(chip).join('')}</div>
+    <div class="row"><span class="k">이번 달 등록 ${fm(ms.sum)}만 · 신규 ${ms.neu} · 재등록 ${ms.re}</span>${t.web ? `<span class="k">홈페이지 ${fm(t.web)}만</span>` : '<span></span>'}</div>
+    <div class="more">날짜별 등록 보기 ›</div>
+  </div>`;
+}
+
 function memberStats() {
   const R = D.roster || {};
   if (R.error || !R.counts) return { ok: false };
@@ -411,6 +434,22 @@ function renderDrill() {
     body = `<div class="dsum">합계 <b class="num rev">${fmt(net(mo))}원</b></div>` + mo.day.map((v, i) => ({ d: i + 1, v })).filter(x => x.v).reverse().map(x =>
       `<button type="button" class="drow" data-drday="${x.d}"><span class="dl"><b>${f.m}/${x.d} (${WD[new Date(D.year, f.m - 1, x.d).getDay()]})</b><span class="dbar"><i style="width:${Math.abs(x.v) / max * 100}%"></i></span></span><span class="num ${x.v < 0 ? 'loss' : ''}">${fmt(x.v)}</span></button>`).join('')
       + '<p class="dnote">통장 입금 기준이라 카드 결제는 1~2일 뒤 날짜에 들어와요. 날짜를 누르면 그날 입금 내역.</p>';
+  } else if (f.type === 'reg') {
+    const R = D.reg || { days: [] };
+    const mon = R.days.filter(x => x.d.slice(0, 7) === (R.today || '').slice(0, 7)).reverse();
+    title = '이번 달 등록 (운영도구)';
+    if (f.day) {
+      const x = R.days.find(y => y.d === f.day) || { kinds: {}, sum: 0 };
+      title = `${f.day.slice(5).replace('-', '/')} 등록`;
+      body = `<div class="dsum">합계 <b class="num rev">${fmt(x.sum)}원</b> · 신규 ${x.neu || 0} · 재등록 ${x.re || 0}${x.web ? ' · 홈페이지 ' + fmt(x.web) + '원' : ''}</div>`
+        + Object.entries(x.kinds).sort((a, b) => b[1].sum - a[1].sum).map(([k, v]) => row('disabled', esc(k), v.n + '건', fmt(v.sum), v.sum < 0 ? 'loss' : '')).join('')
+        + '<p class="dnote">취소된 건은 빼고 셌어요. 이름은 여기 안 나와요.</p>';
+    } else {
+      const tot = mon.reduce((a, x) => a + x.sum, 0), max = Math.max(...mon.map(x => Math.abs(x.sum)), 1);
+      body = `<div class="dsum">합계 <b class="num rev">${fmt(tot)}원</b> · 신규 ${mon.reduce((a, x) => a + x.neu, 0)} · 재등록 ${mon.reduce((a, x) => a + x.re, 0)}</div>`
+        + mon.map(x => `<button type="button" class="drow" data-drreg="${x.d}"><span class="dl"><b>${x.d.slice(5).replace('-', '/')} (${WD[new Date(x.d).getDay()]}) · 신규 ${x.neu} · 재등록 ${x.re}</b><span class="dbar"><i style="width:${Math.abs(x.sum) / max * 100}%"></i></span></span><span class="num ${x.sum < 0 ? 'loss' : ''}">${fmt(x.sum)}</span></button>`).join('')
+        + '<p class="dnote">매니저가 운영도구에 입력한 금액(11/18부터)이에요. 통장 입금 매출과는 날짜가 1~2일 다를 수 있어요. 날짜를 누르면 종류별 합계.</p>';
+    }
   } else if (f.type === 'cats') {
     title = `${f.m}월 비용 (실제 지출)`;
     body = `<div class="dsum">합계 <b class="num cost">${fmt(sum(mo.cost))}원</b> · 통장·카드에서 실제로 나간 돈</div>` + Object.entries(mo.cost).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
@@ -705,6 +744,7 @@ document.addEventListener('click', e => {
   else if (d.mon) { S.month = Math.min(D.cur, Math.max(1, (S.month || D.cur) + Number(d.mon))); render(); }
   else if (d.dr) { drillOpen({ type: d.dr, m: S.month || D.cur }); }
   else if (d.drday) { const f = S.drill.at(-1); drillOpen({ type: 'tx', m: f.m, title: `${f.m}/${d.drday} 입금`, q: { m: f.m, kind: 'rev', day: Number(d.drday) } }); }
+  else if (d.drreg) { drillOpen({ type: 'reg', m: S.month || D.cur, day: d.drreg }); }
   else if (d.drcat) { const f = S.drill.at(-1); drillOpen({ type: 'subs', m: f.m, cat: d.drcat }); }
   else if (d.drsub) { const f = S.drill.at(-1); drillOpen({ type: 'tx', m: f.m, title: `${f.m}월 ${d.drsub}`, q: { m: f.m, kind: 'cost', cat: f.cat, sub: d.drsub } }); }
   else if (d.drall) { const f = S.drill.at(-1); drillOpen({ type: 'tx', m: f.m, title: `${f.m}월 ${sh(f.cat)} 전체`, q: { m: f.m, kind: 'cost', cat: f.cat } }); }

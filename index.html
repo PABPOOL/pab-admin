@@ -244,7 +244,7 @@ function bepFor(m) {
   return b;
 }
 const curMo = () => D.months[D.cur - 1];
-const modeLabel = () => (S.mode === 'acc' ? '월할' : '통장');
+const modeLabel = () => (S.mode === 'acc' ? '비용 월할' : '실제 지출');
 
 // ---------- 차트 ----------
 function flowChart(box, bepV, m) {
@@ -319,7 +319,7 @@ function hbars(rows, max, color) {
   return '<div class="hb">' + rows.map(r => `<div class="l${r.click ? ' click' : ''}"${r.click ? ` tabindex="0" data-cat="${esc(r.click)}"` : ''}><span class="n">${r.dot ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${r.dot};margin-right:5px"></i>` : ''}${esc(r.n)}${r.flag ? '<span class="flag">줄일</span>' : ''}</span><span class="t"><i style="width:${Math.max(0, Math.min(100, r.v / max * 100))}%;background:${r.color || color}"></i></span><span class="v">${r.txt}</span></div>${r.after || ''}`).join('') + '</div>';
 }
 
-const modeSeg = () => `<div class="seg full" role="group" aria-label="기준"><button type="button" data-mode="acc" class="${S.mode === 'acc' ? 'on' : ''}">월할 (기본)</button><button type="button" data-mode="cash" class="${S.mode === 'cash' ? 'on' : ''}">통장 기준</button></div>`;
+const modeSeg = () => `<div class="seg full" role="group" aria-label="비용 기준"><button type="button" data-mode="acc" class="${S.mode === 'acc' ? 'on' : ''}">비용: 월할</button><button type="button" data-mode="cash" class="${S.mode === 'cash' ? 'on' : ''}">비용: 실제 지출</button></div>`;
 
 // ---------- 화면: 홈 ----------
 function home() {
@@ -362,7 +362,7 @@ function home() {
     <div><span class="big cost num">${fm(c)}</span><span class="unit">만</span></div>
     <div class="meter">${cats.map(x => `<i style="width:${x.v / (c || 1) * 100}%;background:${CAT_COLOR[x.k] || '#4F5E6B'}"></i>`).join('')}</div>
     <div class="legend">${cats.map(x => `<span><i style="background:${CAT_COLOR[x.k] || '#4F5E6B'}"></i>${sh(x.k)} ${fm(x.v)}</span>`).join('')}</div>
-    ${accPaid && mode === 'acc' ? '<div class="k mut" style="font-size:11.5px">이번 달에 분기 교육청 사용료가 나갔어요(통장 기준에서 보임)</div>' : ''}
+    ${accPaid && mode === 'acc' ? '<div class="k mut" style="font-size:11.5px">이번 달에 분기 교육청 사용료가 나갔어요(실제 지출에서 보임)</div>' : ''}
     <div class="more">어디에 썼는지 보기 ›</div>
   </div>
   <div class="card">

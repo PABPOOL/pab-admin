@@ -128,7 +128,12 @@ tr.cur td{background:var(--panel2)}
 .btn.sec{background:var(--panel2);color:var(--fg)}
 .btn:disabled{opacity:.4;cursor:default}
 .chk{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
-input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:8px 10px;font:14px var(--sans);width:100%}
+.fform{display:flex;gap:8px}.fform input{flex:1}.fform .btn{width:auto;padding:8px 14px;margin:0}
+.frow{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:9px 2px;color:var(--fg);font:inherit;cursor:pointer}
+.frow.on{background:var(--panel2)}.frow b{font-size:14px}
+.fnote{font-size:11.5px;color:var(--fg);background:var(--panel2);border-radius:6px;padding:4px 7px}
+.fedit{display:flex;gap:8px;padding:0 2px 8px}.fedit input{flex:1}.fedit .btn{width:auto;padding:8px 14px;margin:0}
+input[type=search],input[type=text]{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:8px 10px;font:14px var(--sans);width:100%}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9;max-width:90vw}
 .center{display:grid;place-items:center;min-height:60vh;text-align:center;color:var(--muted);padding:24px}
 .btb{font-family:var(--num);letter-spacing:.32em;font-size:12px;color:var(--dim);text-align:center;padding:6px 0 4px}
@@ -171,7 +176,7 @@ main>.monnav{display:flex;align-items:center;justify-content:center;gap:16px;fon
 (function(){
 'use strict';
 let D = null;
-const S = { tab: 'home', mode: 'acc', pl: 'm', classRange: 3, openCat: null, rv: 0, rvCat: null, rvSub: null, up: { files: [], preview: null, result: null, busy: '' } };
+const S = { tab: 'home', mode: 'acc', pl: 'm', classRange: 3, openCat: null, rv: 0, rvCat: null, rvSub: null, find: { q: '', rows: null, open: null, busy: false }, up: { files: [], preview: null, result: null, busy: '' } };
 try { const t = localStorage.getItem('pabTab'); if (t) S.tab = t; } catch (e) {}
 
 const $ = id => document.getElementById(id);
@@ -627,7 +632,7 @@ function members() {
 // ---------- 화면: 정리함 ----------
 function review() {
   const items = D.reviewItems;
-  if (!items.length) { $('main').innerHTML = '<div class="center full">정리할 거래가 없어요 👍</div>'; return; }
+  if (!items.length) { $('main').innerHTML = findCard() + '<div class="card full" style="max-width:520px"><div class="center">정리할 거래가 없어요 👍</div></div>'; return; }
   if (S.rv >= items.length) S.rv = 0;
   const it = items[S.rv];
   const outAmt = items.filter(x => x.kind === '출금').reduce((a, x) => a + x.amt, 0), inAmt = items.filter(x => x.kind === '입금').reduce((a, x) => a + x.amt, 0);
@@ -635,7 +640,7 @@ function review() {
   const cats = D.allCats;
   const subs = S.rvCat ? (D.subsByCat[S.rvCat] || []) : [];
   const bank = /통장/.test(it.src);
-  $('main').innerHTML = `
+  $('main').innerHTML = findCard() + `
   <div class="card full" style="max-width:520px">
     <div class="row"><span class="k">${S.rv + 1} / ${items.length}건</span><span class="k">출금 ${fm(outAmt)}만 · 입금 ${fm(inAmt)}만</span></div>
     <div class="meter"><i style="width:${(S.rv + 1) / items.length * 100}%;background:var(--profit)"></i></div>
@@ -645,10 +650,62 @@ function review() {
     <div class="k mut" style="font-size:12px">카테고리</div>
     <div class="chips">${cats.map(k => `<button type="button" class="chip${S.rvCat === k ? ' on' : k === sug && !S.rvCat ? ' sug' : ''}" data-rc="${esc(k)}">${esc(k)}</button>`).join('')}</div>
     ${S.rvCat ? `<div class="k mut" style="font-size:12px">세부</div><div class="chips">${subs.map(s => `<button type="button" class="chip${S.rvSub === s ? ' on' : ''}" data-rs="${esc(s)}">${esc(s)}</button>`).join('')}<button type="button" class="chip${S.rvSub === '' ? ' on' : ''}" data-rs="">없음</button></div>` : ''}
-    <input type="text" id="rv-memo" placeholder="메모 (예: 사업자 주소 비상주 사무실)">
+    ${it.note ? `<div class="note">남긴 메모: ${esc(it.note)}</div>` : ''}
+    <input type="text" id="rv-memo" placeholder="뭐였는지 (예: 수영장 보일러 AS, ○○업체)">
     ${bank ? '<label class="chk"><input type="checkbox" id="rv-rule" checked> 같은 거래처는 다음부터 자동 분류 (분류규칙에 추가)</label>' : ''}
     <button type="button" class="btn pri" id="rv-save" ${S.rvCat ? '' : 'disabled'}>${S.rvCat ? esc(S.rvCat) + (S.rvSub ? ' · ' + esc(S.rvSub) : '') + '로 저장' : '카테고리를 고르세요'}</button>
+    <button type="button" class="btn sec" id="rv-memo-only">모르겠음 · 메모만 남기고 다음</button>
+    <p class="mut" style="font-size:11.5px;margin:0">기억나는 만큼만 적어 두면 '확인 필요'로 남아 있다가 나중에 찾기로 꺼내 볼 수 있어요.</p>
   </div>`;
+}
+
+// 정리함 맨 위: 거래 찾기(세무서 문의 때 금액·날짜·이름으로) + 아무 거래에나 메모
+function findCard() {
+  const F = S.find;
+  const rows = F.rows;
+  const list = !rows ? '' : !rows.length ? '<div class="note">찾은 거래가 없어요</div>' : rows.map(r => {
+    const open = F.open === r.key;
+    return `<button type="button" class="frow${open ? ' on' : ''}" data-fk="${esc(r.key)}">
+      <span class="row"><span class="k">${r.date} · ${esc(r.src)} ${esc(r.kind)}</span><span class="num ${r.kind === '입금' ? 'rev' : 'cost'}">${fmt(r.amt)}원</span></span>
+      <span class="row"><b>${esc(r.who)}</b><span class="k">${esc(r.cat)}${r.sub ? ' · ' + esc(r.sub) : ''}</span></span>
+      ${r.memo && r.memo !== r.who ? `<span class="k" style="font-size:11.5px">적요: ${esc(r.memo)}</span>` : ''}
+      ${r.note ? `<span class="fnote">${esc(r.note)}</span>` : ''}
+    </button>${open ? `<div class="fedit"><input type="text" id="f-memo" placeholder="메모 덧붙이기"><button type="button" class="btn pri" id="f-save">메모 저장</button></div>` : ''}`;
+  }).join('');
+  return `<div class="card full" style="max-width:520px">
+    <div class="hd"><h3>거래 찾기</h3><span class="s">금액 · 날짜(2/20) · 이름 · 메모</span></div>
+    <form id="f-form" class="fform"><input type="search" id="f-q" value="${esc(F.q)}" placeholder="예: 2534224 또는 2/20 또는 제이에스" enterkeyhint="search"><button type="submit" class="btn sec">${F.busy ? '찾는 중…' : '찾기'}</button></form>
+    ${rows && rows.length ? `<div class="k mut" style="font-size:11.5px">${rows.length}건${rows.length >= 100 ? ' (최근 100건까지)' : ''} · 누르면 메모를 덧붙일 수 있어요</div>` : ''}
+    ${list}
+  </div>`;
+}
+
+function runFind() {
+  const q = $('f-q').value.trim();
+  if (q.length < 2) return toast('두 글자 이상 적어주세요');
+  S.find = { q, rows: S.find.rows, open: null, busy: true }; render();
+  call('searchTxns', [q], rows => { S.find = { q, rows, open: null, busy: false }; render(); },
+    err => { S.find.busy = false; toast(err); render(); });
+}
+
+function saveFindMemo() {
+  const key = S.find.open, memo = $('f-memo').value.trim();
+  if (!memo) return toast('메모를 적어주세요');
+  const btn = $('f-save'); btn.disabled = true; btn.textContent = '저장 중…';
+  call('saveMemo', [key, memo], res => {
+    const r = S.find.rows.find(x => x.key === key); if (r) r.note = res.note;
+    const it = D.reviewItems.find(x => x.key === key); if (it) it.note = res.note;
+    S.find.open = null; toast('메모 저장'); render();
+  }, err => { btn.disabled = false; btn.textContent = '다시 저장'; toast(err); });
+}
+
+function memoOnly() {
+  const it = D.reviewItems[S.rv], memo = $('rv-memo').value.trim();
+  const next = () => { S.rv = (S.rv + 1) % D.reviewItems.length; S.rvCat = null; S.rvSub = null; render(); };
+  if (!memo) return toast('뭐였는지 기억나는 만큼 적어주세요 (모르면 \'모름\'도 OK)');
+  const btn = $('rv-memo-only'); btn.disabled = true; btn.textContent = '저장 중…';
+  call('saveMemo', [it.key, memo], res => { it.note = res.note; toast('메모 저장 · 확인 필요로 둠'); next(); },
+    err => { btn.disabled = false; btn.textContent = '다시 저장'; toast(err); });
 }
 
 function saveReview() {
@@ -751,18 +808,22 @@ document.addEventListener('click', e => {
   else if (d.drback) { drillBack(); }
   else if (d.drclose) { drillClose(); }
   else if (b.id === 'rv-save') saveReview();
+  else if (b.id === 'rv-memo-only') memoOnly();
+  else if (b.id === 'f-save') saveFindMemo();
+  else if (d.fk) { S.find.open = S.find.open === d.fk ? null : d.fk; render(); const m = $('f-memo'); if (m) m.focus(); }
   else if (b.id === 'up-apply') applyFiles();
   else if (b.id === 'up-reset') { S.up = { files: [], preview: null, result: null, busy: '' }; render(); }
   else if (b.id === 'up-review') { S.tab = 'review'; S.up = { files: [], preview: null, result: null, busy: '' }; reload(); }
   else if (b.id === 'rv-next') { S.rv = (S.rv + 1) % D.reviewItems.length; S.rvCat = null; S.rvSub = null; render(); }
 });
+document.addEventListener('submit', e => { if (e.target.id === 'f-form') { e.preventDefault(); runFind(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.cat) e.target.click(); });
 
 function call(fn, args, ok, fail) {
   if (window.google && google.script && google.script.run) {
     google.script.run.withSuccessHandler(ok).withFailureHandler(err => fail(err && err.message ? err.message : String(err)))[fn](...args);
   } else if (window.MOCK) {   // 로컬 미리보기
-    setTimeout(() => (fn === 'getFinance' ? ok(JSON.parse(JSON.stringify(window.MOCK))) : fn === 'ping' ? ok('미리보기') : fn === 'getTxns' ? ok(filterTxns_(window.MOCK_LEDGER, window.MOCK_CATS, args[0], 2026)) : fn === 'previewUpload' ? ok(args[0].map((f, i) => i === 0 ? { name: f.name, kind: '운영통장', tab: '원본_운영통장', from: '2026.10.01', to: '2026.10.31', rows: 312, fresh: 54 } : { name: f.name, kind: '?', error: '어떤 파일인지 모르겠어요(미리보기)' })) : fn === 'applyUpload' ? ok({ files: args[0].map(f => ({ name: f.name, kind: '운영통장', fresh: 54 })), ledger: { added: 54, changed: 0, todo: 3 } }) : ok({ ok: true, rule: '(미리보기: 저장 안 됨)' })), 150);
+    setTimeout(() => (fn === 'getFinance' ? ok(JSON.parse(JSON.stringify(window.MOCK))) : fn === 'ping' ? ok('미리보기') : fn === 'getTxns' ? ok(filterTxns_(window.MOCK_LEDGER, window.MOCK_CATS, args[0], 2026)) : fn === 'searchTxns' ? ok(window.MOCK_LEDGER.filter(r => String(r[5]) === args[0].replace(/\D/g, '') || String(r[3]).indexOf(args[0]) >= 0).slice(0, 100).map(r => ({ key: String(r[10]), date: String(r[0]).slice(0, 10), src: r[1], kind: r[2], who: r[3], memo: r[4], amt: r[5], cat: r[6], sub: r[7], note: r[9] || '' }))) : fn === 'saveMemo' ? ok({ ok: true, note: '(미리보기) ' + args[1] }) : fn === 'previewUpload' ? ok(args[0].map((f, i) => i === 0 ? { name: f.name, kind: '운영통장', tab: '원본_운영통장', from: '2026.10.01', to: '2026.10.31', rows: 312, fresh: 54 } : { name: f.name, kind: '?', error: '어떤 파일인지 모르겠어요(미리보기)' })) : fn === 'applyUpload' ? ok({ files: args[0].map(f => ({ name: f.name, kind: '운영통장', fresh: 54 })), ledger: { added: 54, changed: 0, todo: 3 } }) : ok({ ok: true, rule: '(미리보기: 저장 안 됨)' })), 150);
   } else fail('데이터를 불러올 수 없어요');
 }
 
